@@ -7,8 +7,6 @@
  */
 
 import {coerceBooleanProperty} from '@angular/cdk/coercion';
-import {take} from 'rxjs/operators/take';
-import {startWith} from 'rxjs/operators/startWith';
 import {
   AfterContentChecked,
   AfterContentInit,
@@ -26,9 +24,12 @@ import {
   ViewChild,
   ViewEncapsulation,
 } from '@angular/core';
-import {FloatLabelType, MAT_LABEL_GLOBAL_OPTIONS, LabelOptions} from '@angular/material/core';
+import {FloatLabelType, LabelOptions, MAT_LABEL_GLOBAL_OPTIONS} from '@angular/material/core';
 import {fromEvent} from 'rxjs/observable/fromEvent';
+import {startWith} from 'rxjs/operators/startWith';
+import {take} from 'rxjs/operators/take';
 import {MatError} from './error';
+import {matFormFieldAnimations} from './form-field-animations';
 import {MatFormFieldControl} from './form-field-control';
 import {
   getMatFormFieldDuplicatedHintError,
@@ -36,14 +37,16 @@ import {
   getMatFormFieldPlaceholderConflictError,
 } from './form-field-errors';
 import {MatHint} from './hint';
-import {MatPlaceholder} from './placeholder';
 import {MatLabel} from './label';
+import {MatPlaceholder} from './placeholder';
 import {MatPrefix} from './prefix';
 import {MatSuffix} from './suffix';
-import {matFormFieldAnimations} from './form-field-animations';
 
 
 let nextUniqueId = 0;
+
+
+export type MatFormFieldAppearance = 'legacy' | 'standard' | 'box';
 
 
 /** Container for form controls that applies Material Design styling and behavior. */
@@ -56,10 +59,19 @@ let nextUniqueId = 0;
   // MatInput is a directive and can't have styles, so we need to include its styles here.
   // The MatInput styles are fairly minimal so it shouldn't be a big deal for people who
   // aren't using MatInput.
-  styleUrls: ['form-field.css', '../input/input.css'],
+  styleUrls: [
+    'form-field.css',
+    'form-field-box.css',
+    'form-field-legacy.css',
+    'form-field-standard.css',
+    '../input/input.css',
+  ],
   animations: [matFormFieldAnimations.transitionMessages],
   host: {
     'class': 'mat-input-container mat-form-field',
+    '[class.mat-form-field-appearance-standard]': 'appearance == "standard"',
+    '[class.mat-form-field-appearance-box]': 'appearance == "box"',
+    '[class.mat-form-field-appearance-legacy]': 'appearance == "legacy"',
     '[class.mat-input-invalid]': '_control.errorState',
     '[class.mat-form-field-invalid]': '_control.errorState',
     '[class.mat-form-field-can-float]': '_canLabelFloat',
@@ -86,6 +98,9 @@ let nextUniqueId = 0;
 export class MatFormField implements AfterViewInit, AfterContentInit, AfterContentChecked {
   private _labelOptions: LabelOptions;
 
+  /** The form-field appearance style. */
+  @Input() appearance: MatFormFieldAppearance = 'legacy';
+
   /** Color of the form field underline, based on the theme. */
   @Input() color: 'primary' | 'accent' | 'warn' = 'primary';
 
@@ -107,11 +122,11 @@ export class MatFormField implements AfterViewInit, AfterContentInit, AfterConte
 
   /** Whether the floating label should always float or not. */
   get _shouldAlwaysFloat() {
-    return this._floatLabel === 'always' && !this._showAlwaysAnimate;
+    return this.floatLabel === 'always' && !this._showAlwaysAnimate;
   }
 
   /** Whether the label can float or not. */
-  get _canLabelFloat() { return this._floatLabel !== 'never'; }
+  get _canLabelFloat() { return this.floatLabel !== 'never'; }
 
   /** State of the mat-hint and mat-error animations. */
   _subscriptAnimationState: string = '';
@@ -133,12 +148,21 @@ export class MatFormField implements AfterViewInit, AfterContentInit, AfterConte
    * @deprecated Use floatLabel instead.
    */
   @Input()
-  get floatPlaceholder(): FloatLabelType { return this._floatLabel; }
+  get floatPlaceholder(): FloatLabelType { return this.floatLabel; }
   set floatPlaceholder(value: FloatLabelType) { this.floatLabel = value; }
 
-  /** Whether the label should always float, never float or float as the user types. */
+  /**
+   * Whether the label should always float, never float or float as the user types.
+   *
+   * Note: only the legacy appearance supports the `never` option. `never` was originally added as a
+   * way to make the floating label emulate the behavior of a standard input placeholder. However
+   * the form field now supports both floating labels and placeholders. Therefore in the non-legacy
+   * appearances the `never` option has been disabled in favor of just using the placeholder.
+   */
   @Input()
-  get floatLabel(): FloatLabelType { return this._floatLabel; }
+  get floatLabel(): FloatLabelType {
+    return this.appearance !== 'legacy' && this._floatLabel === 'never' ? 'auto' : this._floatLabel;
+  }
   set floatLabel(value: FloatLabelType) {
     if (value !== this._floatLabel) {
       this._floatLabel = value || this._labelOptions.float || 'auto';
@@ -232,11 +256,14 @@ export class MatFormField implements AfterViewInit, AfterContentInit, AfterConte
   }
 
   _hideControlPlaceholder() {
-    return !this._hasLabel() || !this._shouldLabelFloat();
+    // In the legacy appearance the placeholder is promoted to a label if no label is given.
+    return this.appearance === 'legacy' && !this._hasLabel() ||
+        this._hasLabel() && !this._shouldLabelFloat();
   }
 
   _hasFloatingLabel() {
-    return this._hasLabel() || this._hasPlaceholder();
+    // In the legacy appearance the placeholder is promoted to a label if no label is given.
+    return this._hasLabel() || this.appearance === 'legacy' && this._hasPlaceholder();
   }
 
   /** Determines whether to display hints or errors. */
@@ -249,7 +276,7 @@ export class MatFormField implements AfterViewInit, AfterContentInit, AfterConte
   _animateAndLockLabel(): void {
     if (this._hasFloatingLabel() && this._canLabelFloat) {
       this._showAlwaysAnimate = true;
-      this._floatLabel = 'always';
+      this.floatLabel = 'always';
 
       fromEvent(this._label.nativeElement, 'transitionend').pipe(take(1)).subscribe(() => {
         this._showAlwaysAnimate = false;
